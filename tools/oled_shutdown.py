@@ -102,12 +102,18 @@ def shutdown_display():
     image = Image.new("1", (WIDTH, HEIGHT))
     draw = ImageDraw.Draw(image)
 
-    # Draw the shutdown message in the vertical center
-    draw.text((0, HEIGHT//2 - LINE_HEIGHT//2), "SHUTTING DOWN...", font=font, fill=255)
+    # Russian "Goodnight"
+    text = "Спокойной ночи"
 
-    # Send the image to the OLED
+    # Draw text centered vertically
+    w, h = draw.textsize(text, font=font)
+    draw.text(((WIDTH - w)//2, (HEIGHT - h)//2), text, font=font, fill=255)
+
+
+    # Send image to OLED
     oled.image(image)
     oled.show()
+
 
 
 # ---------------- MAIN LOOP ----------------
