@@ -95,11 +95,20 @@ def draw_status():
     oled.show()
 
 def shutdown_display():
+    # Clear the OLED
     oled.fill(0)
-    draw = ImageDraw.Draw(Image.new("1", (WIDTH, HEIGHT)))
+
+    # Create a proper PIL image
+    image = Image.new("1", (WIDTH, HEIGHT))
+    draw = ImageDraw.Draw(image)
+
+    # Draw the shutdown message in the vertical center
     draw.text((0, HEIGHT//2 - LINE_HEIGHT//2), "SHUTTING DOWN...", font=font, fill=255)
-    oled.image(draw.im)
+
+    # Send the image to the OLED
+    oled.image(image)
     oled.show()
+
 
 # ---------------- MAIN LOOP ----------------
 try:
