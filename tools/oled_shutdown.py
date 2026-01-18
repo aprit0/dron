@@ -18,8 +18,8 @@ FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_SIZE = 9
 LINE_HEIGHT = FONT_SIZE + 1
 
-ETH_IFACE = "enp3s0"   # change to your wired interface
-WIFI_IFACE = "wlp2s0"  # change to your wireless interface
+ETH_IFACE = "eth0"   # change to your wired interface
+WIFI_IFACE = "wlan0"  # change to your wireless interface
 
 BUTTON_PIN = 21         # BCM pin for shutdown button
 
@@ -63,18 +63,18 @@ def draw_status():
     wifi_ip = get_ip(WIFI_IFACE)
     ts_ip = get_tailscale_ip()
     cpu = psutil.cpu_percent(percpu=True)
-    used, total, _ = shutil.disk_usage("/")
+    total, used, _ = shutil.disk_usage("/")
     used_gb = used // (1024**3)
     total_gb = total // (1024**3)
 
     y = 2  # small offset to avoid OLED line artifact
 
     # Network info
-    draw.text((0, y), f"TS:   {ts_ip}", font=font, fill=255)+3
+    draw.text((0, y), f"TS:   {ts_ip}", font=font, fill=255)
+    y += LINE_HEIGHT+3
+    draw.text((0, y), f"WIFI: {wifi_ip if wifi_ip != '---' else ''}", font=font, fill=255)
     y += LINE_HEIGHT
-    draw.text((0, y), f"WIFI: {wifi_ip}", font=font, fill=255)
-    y += LINE_HEIGHT
-    draw.text((0, y), f"ETH:  {eth_ip}", font=font, fill=255)
+    draw.text((0, y), f"ETH:  {eth_ip if eth_ip != '---' else ''}", font=font, fill=255)
     y += LINE_HEIGHT
     
 
