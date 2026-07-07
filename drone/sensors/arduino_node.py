@@ -66,7 +66,6 @@ class ArduinoSerialNode(Node):
 
     def parse_message(self, line: str):
         parts = line.split(',')
-
         if len(parts) == 3:
             self.handle_sensor(parts, line)
         else:

@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>UAV Dashboard</title>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: Arial; margin: 20px; background: #1a1a1a; color: white; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+        .panel { background: #333; padding: 15px; border-radius: 8px; }
+        #map { height: 400px; }
+        button { background: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background: #45a049; }
+        button.danger { background: #f44336; }
+        button.danger:hover { background: #da190b; }
+        .status { font-size: 24px; font-weight: bold; }
+        .manual { color: #4CAF50; }
+        .pos_hold { color: #2bb7ff; }
+        .disarm { color: #ff9800; }
+        .gps-poor { color: #ff9800; }
+        .gps-good { color: #4CAF50; }
+        .topic-list { display: grid; gap: 8px; max-height: 320px; overflow: auto; }
+        .topic-item { background: #2a2a2a; border-radius: 6px; border: 1px solid #555; }
+        .topic-item.live { border-color: #4CAF50; }
+        .topic-item.stale { border-color: #ff9800; background: #3a2a1a; color: #ffd8a8; }
+        .topic-summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 10px; cursor: pointer; }
+        .topic-summary:hover { background: rgba(255,255,255,0.05); }
+        .topic-name { font-family: monospace; font-size: 13px; word-break: break-all; }
+        .topic-meta { font-size: 12px; color: #cfcfcf; white-space: nowrap; }
+        .topic-expand { font-size: 12px; color: #9ed8ff; margin-left: 10px; }
+        .topic-detail { padding: 10px 12px 12px; white-space: pre-wrap; word-break: break-word; font-size: 12px; color: #e8e8e8; border-top: 1px solid #444; background: #252525; }
+        .topic-detail.open { display: block; }
+        .topic-detail.closed { display: none; }
+        .rc-block { background: #2a2a2a; border-radius: 6px; padding: 10px; margin-top: 8px; }
+        .rc-block strong { display: block; margin-bottom: 6px; }
+        .manual-panel { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+        .manual-joystick-wrap { display: flex; align-items: center; gap: 14px; }
+        .joystick { position: relative; width: 170px; height: 170px; border-radius: 50%; background: radial-gradient(circle at 30% 30%, #5c5c5c, #252525); border: 2px solid #8f8f8f; box-shadow: inset 0 0 12px rgba(0,0,0,0.45), 0 0 12px rgba(0,0,0,0.25); touch-action: none; user-select: none; }
+        .joystick::before { content: ''; position: absolute; inset: 18px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.12); }
+        .joystick-handle { position: absolute; width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #68d96a, #2f8f3a); box-shadow: 0 0 10px rgba(0,0,0,0.3); left: 61px; top: 61px; transform: translate(0, 0); }
+        .manual-values { font-size: 13px; color: #d8d8d8; margin-bottom: 3px; }
+        .manual-sticks { min-width: 120px; }
+        .control-row { display: flex; align-items: center; gap: 10px; }
+        .control-row label { min-width: 70px; font-size: 13px; color: #e8e8e8; }
+        .control-slider { flex: 1; accent-color: #4CAF50; }
+        .control-value { min-width: 42px; text-align: right; font-weight: bold; color: #8fe18d; }
+        canvas { max-width: 200px; max-height: 200px; }
+    </style>
+</head>
+<body>
+    <h1>UAV Control Dashboard</h1>
+    <div class="grid">
+        <div class="panel">
+            <h2>GPS Position</h2>
+            <div id="gps-status" class="status gps-poor">No GPS</div>
+            <p>Lat: <span id="lat">0</span> Lon: <span id="lon">0</span></p>
+            <p>Num Sats: <span id="sats">0</span> HDOP: <span id="hdop">99</span></p>
+            <div id="map"></div>
+        </div>
+        <div class="panel">
+            <h2>Attitude & Alt</h2>
+            <canvas id="attitude-gauge"></canvas>
+            <p>Roll: <span id="roll">0</span>° Pitch: <span id="pitch">0</span>° Yaw: <span id="yaw">0</span>°</p>
+            <p>GPS Alt: <span id="gps-alt">0</span>m OF Alt: <span id="of-alt">10</span>m</p>
+            <p>Battery Voltage: <span id="voltage">0.0</span> V</p>
+        </div>
+        <div class="panel">
+            <h2>State</h2>
+            <p>Flight State: <span id="state" class="status disarm">disarm</span></p>
+            <div class="rc-block">
+                <strong>RC In</strong>
+                <p>Roll: <span id="rc-in-roll">1500</span> Pitch: <span id="rc-in-pitch">1500</span></p>
+                <p>Yaw: <span id="rc-in-yaw">1500</span> Throttle: <span id="rc-in-throttle">1000</span></p>
+            </div>
+            <div class="rc-block">
+                <strong>RC Out</strong>
+                <p>Roll: <span id="rc-out-roll">1500</span> Pitch: <span id="rc-out-pitch">1500</span></p>
+                <p>Yaw: <span id="rc-out-yaw">1500</span> Throttle: <span id="rc-out-throttle">1000</span></p>
+            </div>
+            <div class="rc-block">
+                <strong>Manual Controller</strong>
+                <div class="manual-panel">
+                    <div class="manual-joystick-wrap">
+                        <div id="manual-joystick" class="joystick">
+                            <div id="manual-handle" class="joystick-handle"></div>
+                        </div>
+                        <div class="manual-sticks">
+                            <div class="manual-values">Roll: <span id="manual-roll">1500</span></div>
+                            <div class="manual-values">Pitch: <span id="manual-pitch">1500</span></div>
+                            <div class="manual-values">Yaw: <span id="manual-yaw-display">1500</span></div>
+                        </div>
+                    </div>
+                    <div class="control-row">
+                        <label for="manual-throttle">Throttle</label>
+                        <input id="manual-throttle" class="control-slider" type="range" min="1000" max="2000" value="1000" step="1">
+                        <span id="manual-throttle-value" class="control-value">1000</span>
+                    </div>
+                    <div class="control-row">
+                        <label for="manual-yaw">Yaw</label>
+                        <input id="manual-yaw" class="control-slider" type="range" min="1000" max="2000" value="1500" step="1">
+                        <span id="manual-yaw-value" class="control-value">1500</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="panel" style="grid-column: 1 / -1;">
+        <h2>Controls</h2>
+        <button onclick="setState('disarm')">Disarm</button>
+        <button onclick="setState('manual')">Manual</button>
+        <button onclick="setState('pos_hold')">Pos Hold</button>
+    </div>
+    <div class="panel" style="grid-column: 1 / -1;">
+        <h2>ROS Topics</h2>
+        <div id="topic-list" class="topic-list"></div>
+    </div>
+
+    <script>
+        const ws = new WebSocket('ws://localhost:8000/ws');
+        const map = L.map('map').setView([-33.8688, 151.2093], 15);  // Sydney default
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        const marker = L.marker([-33.8688, 151.2093]).addTo(map);
+
+        let telemetry = {};
+        let manualState = {roll: 1500, pitch: 1500, yaw: 1500, throttle: 1000};
+        let joystickActive = false;
+        const topicListEl = document.getElementById('topic-list');
+        const openTopics = new Set();
+        const manualJoystickEl = document.getElementById('manual-joystick');
+        const manualHandleEl = document.getElementById('manual-handle');
+        const manualThrottleEl = document.getElementById('manual-throttle');
+        const manualYawSliderEl = document.getElementById('manual-yaw');
+        const manualRollEl = document.getElementById('manual-roll');
+        const manualPitchEl = document.getElementById('manual-pitch');
+        const manualYawDisplayEl = document.getElementById('manual-yaw-display');
+        const manualThrottleValueEl = document.getElementById('manual-throttle-value');
+        const manualYawValueEl = document.getElementById('manual-yaw-value');
+        let ctx = document.getElementById('attitude-gauge').getContext('2d');
+        let attitudeChart = new Chart(ctx, {
+            type: 'radar',
+            data: { labels: ['Roll', 'Pitch', 'Yaw'], datasets: [{ data: [0,0,0], backgroundColor: 'rgba(75,192,192,0.2)' }] },
+            options: { scales: { r: { beginAtZero: true, max: 180 } } }
+        });
+
+        ws.onmessage = function(event) {
+            telemetry = JSON.parse(event.data);
+            updateDisplay();
+        };
+
+        function clamp(value, min, max) {
+            return Math.min(max, Math.max(min, value));
+        }
+
+        function sendManualCommand() {
+            if (ws.readyState !== WebSocket.OPEN) return;
+            ws.send(JSON.stringify({type: 'manual_update', ...manualState}));
+        }
+
+        function updateManualDisplay() {
+            manualRollEl.textContent = Math.round(manualState.roll);
+            manualPitchEl.textContent = Math.round(manualState.pitch);
+            manualYawDisplayEl.textContent = Math.round(manualState.yaw);
+            manualThrottleValueEl.textContent = Math.round(manualState.throttle);
+            manualYawValueEl.textContent = Math.round(manualState.yaw);
+            manualThrottleEl.value = Math.round(manualState.throttle);
+            manualYawSliderEl.value = Math.round(manualState.yaw);
+        }
+
+        function setJoystickPosition(x, y) {
+            const clampedX = clamp(x, -1, 1);
+            const clampedY = clamp(y, -1, 1);
+            const handleX = clampedX * 48;
+            const handleY = clampedY * 48;
+            manualHandleEl.style.transform = `translate(${handleX}px, ${handleY}px)`;
+            manualState.roll = clamp(1500 + clampedX * 500, 1000, 2000);
+            manualState.pitch = clamp(1500 - clampedY * 500, 1000, 2000);
+            updateManualDisplay();
+            sendManualCommand();
+        }
+
+        function resetJoystick() {
+            manualState.roll = 1500;
+            manualState.pitch = 1500;
+            manualHandleEl.style.transform = 'translate(0px, 0px)';
+            updateManualDisplay();
+            sendManualCommand();
+        }
+
+        function resetYawControl() {
+            manualState.yaw = 1500;
+            manualYawSliderEl.value = 1500;
+            updateManualDisplay();
+            sendManualCommand();
+        }
+
+        if (manualJoystickEl) {
+            manualJoystickEl.addEventListener('pointerdown', (event) => {
+                joystickActive = true;
+                manualJoystickEl.setPointerCapture(event.pointerId);
+                const rect = manualJoystickEl.getBoundingClientRect();
+                const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                const y = ((event.clientY - rect.top) / rect.height) * 2 - 1;
+                setJoystickPosition(x, y);
+            });
+
+            manualJoystickEl.addEventListener('pointermove', (event) => {
+                if (!joystickActive) return;
+                const rect = manualJoystickEl.getBoundingClientRect();
+                const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+                const y = ((event.clientY - rect.top) / rect.height) * 2 - 1;
+                setJoystickPosition(x, y);
+            });
+
+            manualJoystickEl.addEventListener('pointerup', () => {
+                joystickActive = false;
+                resetJoystick();
+            });
+
+            manualJoystickEl.addEventListener('pointerleave', () => {
+                if (!joystickActive) return;
+                resetJoystick();
+            });
+        }
+
+        if (manualThrottleEl) {
+            manualThrottleEl.addEventListener('input', (event) => {
+                manualState.throttle = Number(event.target.value);
+                updateManualDisplay();
+                sendManualCommand();
+            });
+        }
+
+        if (manualYawSliderEl) {
+            manualYawSliderEl.addEventListener('input', (event) => {
+                manualState.yaw = Number(event.target.value);
+                updateManualDisplay();
+                sendManualCommand();
+            });
+            manualYawSliderEl.addEventListener('pointerup', () => resetYawControl());
+            manualYawSliderEl.addEventListener('pointerleave', () => resetYawControl());
+        }
+
+        updateManualDisplay();
+
+        function updateDisplay() {
+            const t = telemetry;
+            const gps = t.gps || {lat: 0, lon: 0, alt: 0, hdop: 99, sats: 0};
+            const imu = t.imu || {roll: 0, pitch: 0, yaw: 0};
+            const rcIn = t.rc_in || {roll: 1500, pitch: 1500, yaw: 1500, throttle: 1000};
+            const rcOut = t.rc_out || {roll: 1500, pitch: 1500, yaw: 1500, throttle: 1000};
+            const ofOdometry = t.of_odometry || {x: 0, y: 0, z: 0};
+            const voltage = Number.isFinite(t.voltage) ? t.voltage : 0;
+
+            document.getElementById('lat').textContent = gps.lat.toFixed(6);
+            document.getElementById('lon').textContent = gps.lon.toFixed(6);
+            document.getElementById('hdop').textContent = gps.hdop.toFixed(1);
+            document.getElementById('sats').textContent = gps.sats.toFixed(0);
+            document.getElementById('gps-status').textContent = gps.hdop < 2 ? 'Good GPS' : 'Poor GPS';
+            document.getElementById('gps-status').className = gps.hdop < 2 ? 'status gps-good' : 'status gps-poor';
+
+            map.setView([gps.lat, gps.lon], 18);
+            marker.setLatLng([gps.lat, gps.lon]);
+
+            document.getElementById('roll').textContent = imu.roll.toFixed(1);
+            document.getElementById('pitch').textContent = imu.pitch.toFixed(1);
+            document.getElementById('yaw').textContent = imu.yaw.toFixed(1);
+
+            document.getElementById('gps-alt').textContent = gps.alt.toFixed(1);
+            document.getElementById('of-alt').textContent = ofOdometry.z.toFixed(2);
+            document.getElementById('voltage').textContent = voltage.toFixed(2);
+
+            document.getElementById('state').textContent = t.state;
+            let stateClass = 'disarm';
+            if (t.state === 'manual') stateClass = 'manual';
+            else if (t.state === 'pos_hold') stateClass = 'pos_hold';
+            document.getElementById('state').className = 'status ' + stateClass;
+
+            document.getElementById('rc-in-roll').textContent = rcIn.roll.toFixed(0);
+            document.getElementById('rc-in-pitch').textContent = rcIn.pitch.toFixed(0);
+            document.getElementById('rc-in-yaw').textContent = rcIn.yaw.toFixed(0);
+            document.getElementById('rc-in-throttle').textContent = rcIn.throttle.toFixed(0);
+
+            document.getElementById('rc-out-roll').textContent = rcOut.roll.toFixed(0);
+            document.getElementById('rc-out-pitch').textContent = rcOut.pitch.toFixed(0);
+            document.getElementById('rc-out-yaw').textContent = rcOut.yaw.toFixed(0);
+            document.getElementById('rc-out-throttle').textContent = rcOut.throttle.toFixed(0);
+
+            const roll = Number.isFinite(imu.roll) ? imu.roll : 0;
+            const pitch = Number.isFinite(imu.pitch) ? imu.pitch : 0;
+            const yaw = Number.isFinite(imu.yaw) ? imu.yaw : 0;
+            const attitudeValues = [Math.abs(roll), Math.abs(pitch), Math.abs(yaw)].map(v => Math.min(v, 180));
+
+            attitudeChart.data.datasets[0].data = attitudeValues;
+            attitudeChart.update();
+            renderTopics(t.topics || []);
+        }
+
+        function renderTopics(topics) {
+            if (!topicListEl) return;
+            topicListEl.innerHTML = '';
+            if (!Array.isArray(topics) || topics.length === 0) {
+                const empty = document.createElement('div');
+                empty.className = 'topic-item';
+                empty.innerHTML = '<span class="topic-name">No topics discovered yet</span>';
+                topicListEl.appendChild(empty);
+                return;
+            }
+
+            topics.forEach((topic) => {
+                const topicItem = document.createElement('div');
+                topicItem.className = topic.stale ? 'topic-item stale' : 'topic-item live';
+
+                const summary = document.createElement('div');
+                summary.className = 'topic-summary';
+
+                const title = document.createElement('span');
+                title.className = 'topic-name';
+                title.textContent = topic.name;
+
+                const meta = document.createElement('span');
+                meta.className = 'topic-meta';
+                const ageText = topic.stale ? `${topic.age.toFixed(1)}s stale` : `${topic.age.toFixed(1)}s`;
+                meta.textContent = `${topic.type || 'unknown'} · ${ageText}`;
+
+                const expand = document.createElement('span');
+                expand.className = 'topic-expand';
+                expand.textContent = openTopics.has(topic.name) ? '▲' : '▼';
+
+                summary.appendChild(title);
+                summary.appendChild(meta);
+                summary.appendChild(expand);
+                topicItem.appendChild(summary);
+
+                const detail = document.createElement('div');
+                detail.className = `topic-detail ${openTopics.has(topic.name) ? 'open' : 'closed'}`;
+                detail.textContent = topic.last_message || 'No recent message';
+                topicItem.appendChild(detail);
+
+                summary.addEventListener('click', () => {
+                    const isOpen = openTopics.has(topic.name);
+                    if (isOpen) {
+                        openTopics.delete(topic.name);
+                    } else {
+                        openTopics.add(topic.name);
+                    }
+                    renderTopics(topics);
+                });
+
+                topicListEl.appendChild(topicItem);
+            });
+        }
+
+        function sendCommand(cmd) {
+            ws.send(JSON.stringify(cmd));
+        }
+
+        function setState(state) {
+            sendCommand({type: 'set_state', state: state});
+        }
+
+        ws.onopen = () => console.log('WS connected');
+        ws.onerror = (e) => console.error('WS error', e);
+        ws.onclose = () => console.log('WS closed');
+    </script>
+</body>
+</html>

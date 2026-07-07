@@ -48,7 +48,7 @@ class GPSNode(Node):
                 continue
             if not line:
                 continue
-
+            # print(line)
             # --- Parse GGA for position, satellites, HDOP ---
             if 'GGA' in line:
                 try:
@@ -88,7 +88,7 @@ class GPSNode(Node):
                     self.hdop_pub.publish(Float32(data=hdop))
 
                     # Logging
-                    # self.get_logger().info(f"Pos: {lat:.6f},{lon:.6f} Alt:{alt:.1f}m HDOP:{hdop} Sats:{sats}")
+                    self.get_logger().info(f"Pos: {lat:.6f},{lon:.6f} Alt:{alt:.1f}m HDOP:{hdop} Sats:{sats}")
 
                 except Exception as e:
                     self.get_logger().warn(f"GGA parse error: {e}")

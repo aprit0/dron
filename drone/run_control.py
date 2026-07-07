@@ -4,8 +4,8 @@ import rclpy
 from rclpy.executors import MultiThreadedExecutor
 
 # Import node classes
-from sensors.msp_node import MultiWiiRosNode
-from sensors.arduino_node import ArduinoSerialNode
+from control.ps5_controller_node import PS5ControllerNode
+from control.safety_mixer_node import SafetyMixerNode
 
 
 def main(args=None):
@@ -13,13 +13,13 @@ def main(args=None):
 
     # Create nodes
 
-    msp_node = MultiWiiRosNode()
-    arduino_node = ArduinoSerialNode()
+    ps5_node = PS5ControllerNode()
+    mixer_node = SafetyMixerNode()
 
     # Use multithreaded executor
     executor = MultiThreadedExecutor()
-    executor.add_node(msp_node)
-    executor.add_node(arduino_node)
+    executor.add_node(ps5_node)
+    executor.add_node(mixer_node)
 
     try:
         executor.spin()
@@ -27,8 +27,8 @@ def main(args=None):
         pass
     finally:
         executor.shutdown()
-        msp_node.destroy_node()
-        arduino_node.destroy_node()
+        ps5_node.destroy_node()
+        mixer_node.destroy_node()
 
         rclpy.shutdown()
 
